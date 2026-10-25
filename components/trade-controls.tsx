@@ -37,13 +37,21 @@ interface TradeControlsProps {
   buyError: string | null;
   onClearBuyResult: () => void;
   isAuthenticated?: boolean;
-  /**
-   * Pins the Buy button above the footer (fixed) instead of inline. Driven by
-   * the same useIsMobile state that picks the view's layout branch — a CSS
-   * breakpoint here could disagree with the mounted branch during the
-   * first-paint window, where useIsMobile is still false on every viewport.
-   */
   isMobile?: boolean;
+  martingaleMultiplier: number;
+  setMartingaleMultiplier: (value: number) => void;
+  stakeBareMultiplier: number;
+  setStakeBareMultiplier: (value: number) => void;
+  stakeMode: 'standard' | 'stake-bare';
+  setStakeMode: (value: 'standard' | 'stake-bare') => void;
+  takeProfit: string;
+  setTakeProfit: (value: string) => void;
+  stopLoss: string;
+  setStopLoss: (value: string) => void;
+  sessionPnl: number;
+  effectiveStake: number;
+  riskBlocked: boolean;
+  resetSessionPnl: () => void;
 }
 
 function getContractModeOptions(
@@ -89,6 +97,11 @@ function showDigitInPrediction(contractMode: ContractMode): boolean {
   return contractMode !== 'DIGITEVEN' && contractMode !== 'DIGITODD';
 }
 
+function formatSignedMoney(value: number): string {
+  const prefix = value >= 0 ? '+' : '-';
+  return `${prefix}$${Math.abs(value).toFixed(2)}`;
+}
+
 export function TradeControls({
   tradeType,
   contractMode,
@@ -109,6 +122,20 @@ export function TradeControls({
   onClearBuyResult,
   isAuthenticated,
   isMobile,
+  martingaleMultiplier,
+  setMartingaleMultiplier,
+  stakeBareMultiplier,
+  setStakeBareMultiplier,
+  stakeMode,
+  setStakeMode,
+  takeProfit,
+  setTakeProfit,
+  stopLoss,
+  setStopLoss,
+  sessionPnl,
+  effectiveStake,
+  riskBlocked,
+  resetSessionPnl,
 }: TradeControlsProps) {
   const { localize } = useAppTranslations();
 
@@ -138,20 +165,20 @@ export function TradeControls({
   const modeOptions = getContractModeOptions(localize)[tradeType];
 
   return (
-    <div className="space-y-2 sm:space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <ToggleGroup
         type="single"
         value={contractMode}
-        onValueChange={value => {
+        onValueChange={(value) => {
           if (value) onContractModeChange(value as ContractMode);
         }}
-        className="w-full gap-0 rounded-full bg-muted p-1"
+        className="w-full gap-0 rounded-full bg-muted/70 p-1 shadow-inner ring-1 ring-border/60"
       >
-        {modeOptions.map(opt => (
+        {modeOptions.map((opt) => (
           <ToggleGroupItem
             key={opt.value}
             value={opt.value}
-            className="flex-1 rounded-full text-sm font-medium text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-primary data-[state=on]:font-bold data-[state=on]:shadow-sm hover:text-foreground"
+            className="flex-1 rounded-full border border-transparent text-sm font-medium text-muted-foreground transition-all duration-200 data-[state=on]:border-primary/20 data-[state=on]:bg-background data-[state=on]:text-primary data-[state=on]:shadow-sm data-[state=on]:font-bold"
           >
             {opt.label}
           </ToggleGroupItem>
@@ -160,31 +187,32 @@ export function TradeControls({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="stake" className="text-xs text-muted-foreground">
+          <Label htmlFor="stake" className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             <Localize i18n_default_text="Stake" />
           </Label>
           <Input
             id="stake"
             type="number"
             value={stake}
-            onChange={e => onStakeChange(e.target.value)}
-            onKeyDown={e => {
+            onChange={(e) => onStakeChange(e.target.value)}
+            onKeyDown={(e) => {
               if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
             }}
             min={0}
             step="0.01"
             labelRight="USD"
+            className="h-11 rounded-xl border-border/80 bg-background/80 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30"
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="duration" className="text-xs text-muted-foreground">
+          <Label htmlFor="duration" className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
             <Localize i18n_default_text="Duration" />
           </Label>
           <Input
             id="duration"
             type="number"
             value={duration}
-            onChange={e => {
+            onChange={(e) => {
               const val = parseInt(e.target.value, 10);
               if (!isNaN(val)) onDurationChange(val);
             }}
@@ -192,15 +220,130 @@ export function TradeControls({
             max={durationLimits.max}
             step={1}
             labelRight={localize('Ticks')}
+            className="h-11 rounded-xl border-border/80 bg-background/80 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30"
           />
         </div>
       </div>
 
-      <div className="rounded-lg border border-border p-2 sm:p-3 bg-muted/20 space-y-1.5 sm:space-y-2">
-        <p className="text-[11px] sm:text-xs text-muted-foreground mb-0 sm:mb-1">
+      <div className="rounded-2xl border border-border/80 bg-gradient-to-br from-background via-background to-primary/[0.02] p-3 shadow-inner shadow-primary/5 ring-1 ring-border/70">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            <Localize i18n_default_text="Strategy" />
+          </span>
+          <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] font-semibold text-primary">
+            {effectiveStake.toFixed(2)} USD
+          </span>
+        </div>
+
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              <Localize i18n_default_text="Mode" />
+            </Label>
+            <div className="flex rounded-full bg-muted/70 p-1 shadow-inner ring-1 ring-border/60">
+              <button
+                type="button"
+                onClick={() => setStakeMode('standard')}
+                className={`flex-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  stakeMode === 'standard' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Localize i18n_default_text="Martingale" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setStakeMode('stake-bare')}
+                className={`flex-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  stakeMode === 'stake-bare' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Localize i18n_default_text="Stake Bare" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              <Localize i18n_default_text="Multiplier" />
+            </Label>
+            <select
+              value={stakeMode === 'stake-bare' ? stakeBareMultiplier : martingaleMultiplier}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (stakeMode === 'stake-bare') {
+                  setStakeBareMultiplier(value);
+                } else {
+                  setMartingaleMultiplier(value);
+                }
+              }}
+              className="h-11 w-full rounded-xl border border-border/80 bg-background/90 px-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
+            >
+              {[2, 3, 4, 5, 6, 7].map((multiplier) => (
+                <option key={multiplier} value={multiplier}>
+                  {multiplier}x
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="takeProfit" className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              <Localize i18n_default_text="Take Profit" />
+            </Label>
+            <Input
+              id="takeProfit"
+              type="number"
+              value={takeProfit}
+              onChange={(e) => setTakeProfit(e.target.value)}
+              min={0}
+              step="0.01"
+              labelRight="USD"
+              className="h-11 rounded-xl border-border/80 bg-background/80 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="stopLoss" className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              <Localize i18n_default_text="Stop Loss" />
+            </Label>
+            <Input
+              id="stopLoss"
+              type="number"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(e.target.value)}
+              min={0}
+              step="0.01"
+              labelRight="USD"
+              className="h-11 rounded-xl border-border/80 bg-background/80 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between rounded-xl border border-dashed border-border/80 bg-background/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+          <span>
+            <Localize i18n_default_text="Session P/L" />
+          </span>
+          <div className="flex items-center gap-2">
+            <span className={`font-semibold ${sessionPnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {formatSignedMoney(sessionPnl)}
+            </span>
+            <button
+              type="button"
+              onClick={resetSessionPnl}
+              className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              <Localize i18n_default_text="Reset" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/80 bg-muted/20 p-3 shadow-inner shadow-primary/5">
+        <p className="text-[11px] mb-2 font-medium uppercase tracking-[0.12em] text-muted-foreground">
           <Localize i18n_default_text="Prediction" />
         </p>
-        <p className="text-xs sm:text-sm font-medium">
+        <p className="text-sm font-medium text-foreground">
           <Localize i18n_default_text="Last digit of the price will" />{' '}
           <span className="text-primary font-bold">
             {getPredictionText(contractMode, localize)}
@@ -208,14 +351,14 @@ export function TradeControls({
           {showDigitInPrediction(contractMode) && (
             <>
               {' '}
-              <span className="inline-flex w-5 h-5 rounded-full bg-primary text-primary-foreground items-center justify-center text-xs font-bold">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow-sm">
                 {selectedDigit}
               </span>
             </>
           )}
         </p>
         {(proposal || isProposalLoading) && (
-          <div className="flex items-center justify-between pt-1 border-t border-border">
+          <div className="mt-3 flex items-center justify-between border-t border-border/80 pt-2.5">
             <span className="text-xs text-muted-foreground">
               <Localize i18n_default_text="Payout" />
             </span>
@@ -230,26 +373,27 @@ export function TradeControls({
         )}
       </div>
 
-      {/* Buy button — fixed above footer on mobile, inline on desktop */}
-      <div
-        className={
-          isMobile
-            ? 'fixed bottom-[calc(env(safe-area-inset-bottom)+2.5rem)] left-3 right-3'
-            : undefined
-        }
-      >
+      {riskBlocked && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          <Localize i18n_default_text="Risk guard active: session thresholds are reached. Adjust your strategy settings." />
+        </div>
+      )}
+
+      <div className={isMobile ? 'fixed bottom-[calc(env(safe-area-inset-bottom)+2.5rem)] left-3 right-3' : undefined}>
         <Button
-          className="w-full h-10 rounded-full px-6 sm:h-11 sm:px-8"
-          disabled={!isConnected || !proposal || isBuying}
+          className="h-11 w-full rounded-full bg-gradient-to-r from-primary to-primary/80 px-6 text-sm font-semibold shadow-lg shadow-primary/25 transition-all hover:scale-[1.01] hover:shadow-primary/35 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={!isConnected || !proposal || isBuying || riskBlocked}
           onClick={onBuy}
         >
-          {isBuying
-            ? localize('Purchasing...')
-            : proposal
-              ? localize('Buy @ {{price}} USD', {
-                  price: proposal.askPrice.toFixed(2),
-                })
-              : localize('Buy Contract')}
+          {riskBlocked
+            ? localize('Risk guard active')
+            : isBuying
+              ? localize('Purchasing...')
+              : proposal
+                ? localize('Buy @ {{price}} USD', {
+                    price: proposal.askPrice.toFixed(2),
+                  })
+                : localize('Buy Contract')}
         </Button>
       </div>
 
