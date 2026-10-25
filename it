@@ -1,0 +1,39 @@
+# Dashboard Update Summary
+
+## Dashboard and digit analysis
+
+- Added a dark trading dashboard layout with account balance, session P/L, market selection, current tick display, digit frequency visualization, and trading controls.
+- Added selectable 0–9 circular digit indicators with percentage rings, analyzed tick counts, and digit breakdown counts.
+- Updated recent tick history to show the relevant contract outcome: Matches/Differs (M/D), Over/Under (O/U), or Even/Odd (E/O). Outcome badges are colored to distinguish winning and losing outcomes.
+- Added account navigation for Dashboard, Bulk Trader, Admin Panel, Account Management, and Transfer.
+- Added account-management, admin, and bulk-trader routes.
+
+## Trading controls and safety
+
+- Added controls for contract type, contract direction, stake, tick duration, stake multiplier, and number of automated trades.
+- Added a clearly labeled Stake Bare multiplier section for Matches/Differs contracts.
+- Added automated Martingale recovery calculations for the supported digit contract types, with a 7x recovery cap.
+- Added Take Profit and Stop Loss inputs and guards to halt automated trading at configured thresholds.
+- Preserved live Deriv WebSocket market data, proposal quotes, contract purchases, account authentication, and login gating.
+
+## Project and repository updates
+
+- Added a lockfile and ignore rules for dependency folders, build output, and local environment configuration.
+- Removed `.env.production` from Git tracking; the local file was kept in place. Its previous contents remain in GitHub commit history, so rotate any credentials it may have contained.
+- Added route and trading UI refinements across the app components and trading hooks.
+
+## Validation
+
+- `npx tsc --noEmit` passed.
+- `npm run build` passed.
+- `git diff --check` passed.
+
+## GitHub status
+
+- Local commit: `ab4e801` — `Implement live digit trading dashboard`
+- Destination: `https://github.com/sherianelliott-oss/infinity`
+- The commit has **not** been pushed. Push attempts were blocked because GitHub authentication is not configured in this environment. After authenticating, run:
+
+```bash
+git push origin main
+```
