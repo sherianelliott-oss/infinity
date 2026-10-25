@@ -1,606 +1,392 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ban } from 'lucide-react';
+import { useEffect } from 'react';
 import { toast } from 'sonner';
+import Link from 'next/link';
 import { Localize } from '@deriv-com/translations';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Footer, FooterBar } from '@/components/custom/footer';
-import { Header } from '@/components/custom/header';
-import { LoginPromptDialog } from '@/components/custom/login-prompt-dialog';
-import { PinnedBuyBar } from '@/components/custom/pinned-buy-bar';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useIsMobile } from '@/hooks/use-is-mobile';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAppTranslations } from '@/components/custom/i18n-provider';
-import { CurrentTickDisplay } from './current-tick-display';
-import { DigitStatsBar } from './digit-stats-bar';
-import { TradeControls } from './trade-controls';
-import { ConfigurableDigitsControls, ConfigurableBuyButton } from './configurable-digits-controls';
-import { TradeTypeChips } from '@/components/custom/trade-type-chips';
-import { SymbolSelector } from '@/components/custom/symbol-selector';
-import { ThemeToggle } from '@/components/custom/theme-toggle';
 import type {
-  AuthState,
-  DerivAccount,
-  ActiveSymbol,
-  Tick,
-  ProposalInfo,
+  ContractMode,
+  TradeType,
   DurationLimits,
+  ProposalInfo,
   BuyResult,
-} from '@deriv/core';
-import type { ContractMode, TradeType, DigitStats } from '../lib/types';
-import { ALL_CONTROL_KEYS } from '../lib/app-config';
-import type { ControlKey, DigitsAppConfig } from '../lib/app-config';
+} from '../lib/types';
 
-/**
- * Desktop no-code column split. Digits has no chart, so the market-data blocks
- * (symbol, tick, digit stats) stand in for it on the left, mirroring the
- * chart-left / controls-right desktop layout of rise-fall and accumulators —
- * and the 3-column desktop the standard Digits layout has always had. The
- * blocks keep their configured relative order inside each column; the
- * drag-to-reorder editor is phone-framed, so the single mobile column stays
- * the source of truth and desktop is a grouped projection of it.
- */
-const MARKET_COLUMN_KEYS: ControlKey[] = ['symbol', 'tick', 'digitStats'];
-const CONTROLS_COLUMN_KEYS: ControlKey[] = ALL_CONTROL_KEYS.filter(
-  (key) => !MARKET_COLUMN_KEYS.includes(key)
-);
-
-function getDigitTradeTypeOptions(
-  localize: (text: string) => string
-): { value: TradeType; label: string }[] {
-  return [
-    { value: 'matches-differs', label: localize('Matches/Differs') },
-    { value: 'over-under', label: localize('Over/Under') },
-    { value: 'even-odd', label: localize('Even/Odd') },
-  ];
-}
-
-// Edit-mode stand-in for the login prompt's auth handlers — same rule as the
-// header: no OAuth navigation out of the editor.
-const noopAsyncAuth = async () => {};
-
-export interface DigitsViewProps {
-  // Auth
-  authState: AuthState;
-  accounts: DerivAccount[];
-  activeAccount: DerivAccount | null;
-  onLogin: () => Promise<void>;
-  onSignUp: () => Promise<void>;
-  onLogout: () => void;
-  onSwitchAccount: (accountId: string) => Promise<void>;
-
-  // Connection / loading
-  isConnected: boolean;
-  isLoading: boolean;
-  error: string | null;
-
-  // Market data
-  symbols: ActiveSymbol[];
-  activeSymbol: ActiveSymbol | null;
-  selectSymbol: (symbol: string) => void;
-  currentTick: Tick | null;
-  lastDigit: number | null;
-  digitStats: DigitStats;
-  pipSize: number;
-
-  // Trade controls
+interface TradeControlsProps {
   tradeType: TradeType;
-  setTradeType: (type: TradeType) => void;
   contractMode: ContractMode;
-  setContractMode: (mode: ContractMode) => void;
+  onContractModeChange: (mode: ContractMode) => void;
   selectedDigit: number;
-  setSelectedDigit: (digit: number) => void;
+  isConnected: boolean;
   stake: string;
-  setStake: (value: string) => void;
+  onStakeChange: (value: string) => void;
   duration: number;
-  setDuration: (value: number) => void;
+  onDurationChange: (value: number) => void;
   durationLimits: DurationLimits;
   proposal: ProposalInfo | null;
   isProposalLoading: boolean;
-  buyContract: () => Promise<void>;
+  onBuy: () => void;
   isBuying: boolean;
   buyResult: BuyResult | null;
   buyError: string | null;
-  clearBuyResult: () => void;
-  // Branding (used by preview route; no-op in the real app)
-  logoSrc?: string;
-  appName?: string;
-  showAppName?: boolean;
-
-  /**
-   * No-code config. When provided, the controls render in configurable
-   * styles/order (ConfigurableDigitsControls). When omitted, the standard
-   * DigitsView layout renders unchanged.
-   */
-  appConfig?: DigitsAppConfig;
-  /** Edit mode — components become selectable (click opens their accordion). */
-  editMode?: boolean;
-  /** Called when an editable component is clicked (e.g. "stake"). */
-  onSelect?: (key: string) => void;
-  /** Currently selected component (highlighted). */
-  selectedKey?: string | null;
-  /** Rearrange mode — drag blocks in the phone to reorder the layout. */
-  rearrangeMode?: boolean;
-  /** Called with the new block order after a drag-drop reorder. */
-  onReorder?: (order: DigitsAppConfig['order']) => void;
+  onClearBuyResult: () => void;
+  isAuthenticated?: boolean;
+  isMobile?: boolean;
+  martingaleMultiplier: number;
+  setMartingaleMultiplier: (value: number) => void;
+  stakeBareMultiplier: number;
+  setStakeBareMultiplier: (value: number) => void;
+  stakeMode: 'standard' | 'stake-bare';
+  setStakeMode: (value: 'standard' | 'stake-bare') => void;
+  takeProfit: string;
+  setTakeProfit: (value: string) => void;
+  stopLoss: string;
+  setStopLoss: (value: string) => void;
+  sessionPnl: number;
+  effectiveStake: number;
+  riskBlocked: boolean;
+  resetSessionPnl: () => void;
 }
 
-export function DigitsView({
-  authState,
-  accounts,
-  activeAccount,
-  onLogin,
-  onSignUp,
-  onLogout,
-  onSwitchAccount,
-  isConnected,
-  isLoading,
-  error,
-  symbols,
-  activeSymbol,
-  selectSymbol,
-  currentTick,
-  lastDigit,
-  digitStats,
-  pipSize,
+function getContractModeOptions(
+  localize: (text: string) => string
+): Record<TradeType, { value: ContractMode; label: string }[]> {
+  return {
+    'matches-differs': [
+      { value: 'DIGITMATCH', label: localize('Matches') },
+      { value: 'DIGITDIFF', label: localize('Differs') },
+    ],
+    'over-under': [
+      { value: 'DIGITOVER', label: localize('Over') },
+      { value: 'DIGITUNDER', label: localize('Under') },
+    ],
+    'even-odd': [
+      { value: 'DIGITEVEN', label: localize('Even') },
+      { value: 'DIGITODD', label: localize('Odd') },
+    ],
+  };
+}
+
+function getPredictionText(
+  contractMode: ContractMode,
+  localize: (text: string) => string
+): string {
+  switch (contractMode) {
+    case 'DIGITMATCH':
+      return localize('match');
+    case 'DIGITDIFF':
+      return localize('differ from');
+    case 'DIGITOVER':
+      return localize('be over');
+    case 'DIGITUNDER':
+      return localize('be under');
+    case 'DIGITEVEN':
+      return localize('be even');
+    case 'DIGITODD':
+      return localize('be odd');
+  }
+}
+
+function showDigitInPrediction(contractMode: ContractMode): boolean {
+  return contractMode !== 'DIGITEVEN' && contractMode !== 'DIGITODD';
+}
+
+export function TradeControls({
   tradeType,
-  setTradeType,
   contractMode,
-  setContractMode,
+  onContractModeChange,
   selectedDigit,
-  setSelectedDigit,
+  isConnected,
   stake,
-  setStake,
+  onStakeChange,
   duration,
-  setDuration,
+  onDurationChange,
   durationLimits,
   proposal,
   isProposalLoading,
-  buyContract,
+  onBuy,
   isBuying,
   buyResult,
   buyError,
-  clearBuyResult,
-  logoSrc,
-  appName,
-  showAppName,
-  appConfig,
-  editMode,
-  onSelect,
-  selectedKey,
-  rearrangeMode,
-  onReorder,
-}: DigitsViewProps) {
-  const isMobile = useIsMobile();
-  // Pinning is a mobile affordance: on desktop the controls card grows to fit,
-  // so the Buy button is never scroll-clipped and a viewport-wide bar under a
-  // 400px column would look detached.
-  const pinBuy = !!appConfig?.buy?.pinned && isMobile;
-  // With Buy unpinned the footer still has to sit at the end of the mobile
-  // column — and a `fixed` footer makes that column reserve clearance for it.
-  // That reservation was a guess (`pb-28`, 112px) for a footer that measures
-  // 40px, leaving 72px of dead space under the Buy button at the bottom of the
-  // scroll. Rendering it in flow, exactly as PinnedBuyBar does, ends the column
-  // where the footer begins and removes the number to guess.
-  //
-  // Note what this does NOT depend on: `buy.pinned`. Every no-code mobile
-  // render gets the in-flow band, so an existing unpinned project also moves
-  // off the translucent `fixed` footer on its next redeploy. That is deliberate
-  // — it is the dead-space fix — but it means the backward-compatibility rule
-  // covers Buy's PLACEMENT, not the footer treatment: a pre-existing project
-  // keeps Buy scrolling in the column, while its footer becomes the opaque
-  // bordered band. A footer that moved after a redeploy is expected here, not a
-  // regression.
-  const inFlowFooter = !!appConfig && isMobile;
+  onClearBuyResult,
+  isAuthenticated,
+  isMobile,
+  martingaleMultiplier,
+  setMartingaleMultiplier,
+  stakeBareMultiplier,
+  setStakeBareMultiplier,
+  stakeMode,
+  setStakeMode,
+  takeProfit,
+  setTakeProfit,
+  stopLoss,
+  setStopLoss,
+  sessionPnl,
+  effectiveStake,
+  riskBlocked,
+  resetSessionPnl,
+}: TradeControlsProps) {
   const { localize } = useAppTranslations();
-  const digitTradeTypeOptions = getDigitTradeTypeOptions(localize);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
-  // Logged-out Buy opens the login/sign-up prompt instead of sending a buy that
-  // would fail with a "Purchase Failed" toast. One gate covers every Buy
-  // surface (standard, configurable, pinned). Edit mode stays inert — the
-  // editor owns Buy clicks there, and its auth actions are already no-ops.
-  const handleBuy = useCallback(async () => {
-    if (editMode) return;
-    // Mid-OAuth (the ?code= callback) the header already shows a login in
-    // progress — don't stack a "please log in" prompt on top of it.
-    if (authState === 'authenticating') return;
-    if (authState !== 'authenticated') {
-      setShowLoginPrompt(true);
-      return;
+  useEffect(() => {
+    if (buyError) {
+      toast.error(localize('Purchase Failed'), { description: buyError });
+      onClearBuyResult();
     }
-    await buyContract();
-  }, [editMode, authState, buyContract]);
+  }, [buyError, onClearBuyResult, localize]);
 
-  // Purchase feedback for the configurable layouts lives HERE, not in
-  // ConfigurableDigitsControls: the desktop no-code layout mounts that
-  // component once per column, and a per-instance effect would fire every
-  // toast twice. The standard layout's TradeControls owns its own toasts, so
-  // these are gated on appConfig to keep a single owner per layout.
-  const hasAppConfig = !!appConfig;
   useEffect(() => {
-    if (!hasAppConfig || !buyError) return;
-    toast.error(localize('Purchase Failed'), { description: buyError });
-    clearBuyResult();
-  }, [hasAppConfig, buyError, clearBuyResult, localize]);
-  useEffect(() => {
-    if (!hasAppConfig || !buyResult) return;
-    toast.success(localize('Contract Purchased'), {
-      description: localize(
-        'Buy price: {{buyPrice}} USD | Payout: {{payout}} USD | Balance: {{balance}} USD',
-        {
-          buyPrice: buyResult.buyPrice.toFixed(2),
-          payout: buyResult.payout.toFixed(2),
-          balance: buyResult.balanceAfter.toFixed(2),
-        }
-      ),
-    });
-    clearBuyResult();
-  }, [hasAppConfig, buyResult, clearBuyResult, localize]);
+    if (buyResult) {
+      toast.success(localize('Contract Purchased'), {
+        description: localize(
+          'Buy price: {{buyPrice}} USD | Payout: {{payout}} USD | Balance: {{balance}} USD',
+          {
+            buyPrice: buyResult.buyPrice.toFixed(2),
+            payout: buyResult.payout.toFixed(2),
+            balance: buyResult.balanceAfter.toFixed(2),
+          }
+        ),
+      });
+      onClearBuyResult();
+    }
+  }, [buyResult, onClearBuyResult, localize]);
 
-  // In edit mode, login/sign-up/account actions are inert (no OAuth navigation
-  // out of the editor) — only the theme toggle stays interactive.
-  const headerEl = useMemo(() => {
-    const noop = () => {};
-    const noopAsync = async () => {};
-    return (
-      <Header
-        authState={authState}
-        accounts={accounts}
-        activeAccount={activeAccount}
-        onLogin={editMode ? noopAsync : onLogin}
-        onSignUp={editMode ? noopAsync : onSignUp}
-        onLogout={editMode ? noop : onLogout}
-        onSwitchAccount={editMode ? noopAsync : onSwitchAccount}
-        logoSrc={logoSrc}
-        appName={appName}
-        showAppName={showAppName}
-        actions={<ThemeToggle />}
-      />
-    );
-  }, [
-    authState,
-    accounts,
-    activeAccount,
-    editMode,
-    onLogin,
-    onSignUp,
-    onLogout,
-    onSwitchAccount,
-    logoSrc,
-    appName,
-    showAppName,
-  ]);
-
-  if (error) {
-    return (
-      <main className="flex flex-col bg-background items-center justify-center px-4 min-h-dvh">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <CardTitle className="text-destructive">
-              <Localize i18n_default_text="Connection Error" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
-  // The configurable controls — a reorderable column. `keys` narrows the
-  // instance to one desktop column; omitted, it renders every block.
-  const renderConfigurable = (keys?: ControlKey[], showPositionsLink?: boolean) =>
-    appConfig ? (
-      <ConfigurableDigitsControls
-        config={appConfig}
-        keys={keys}
-        showPositionsLink={showPositionsLink}
-        symbols={symbols}
-        activeSymbol={activeSymbol}
-        selectSymbol={selectSymbol}
-        currentTick={currentTick}
-        lastDigit={lastDigit}
-        digitStats={digitStats}
-        pipSize={pipSize}
-        tradeType={tradeType}
-        onTradeTypeChange={setTradeType}
-        contractMode={contractMode}
-        onContractModeChange={setContractMode}
-        selectedDigit={selectedDigit}
-        onDigitSelect={setSelectedDigit}
-        stake={stake}
-        onStakeChange={setStake}
-        duration={duration}
-        onDurationChange={setDuration}
-        durationLimits={durationLimits}
-        proposal={proposal}
-        isProposalLoading={isProposalLoading}
-        onBuy={handleBuy}
-        isBuying={isBuying}
-        isConnected={isConnected}
-        isAuthenticated={authState === 'authenticated'}
-        editMode={editMode}
-        onSelect={onSelect}
-        selectedKey={selectedKey}
-        rearrangeMode={rearrangeMode}
-        onReorder={onReorder}
-        pinBuy={pinBuy}
-      />
-    ) : null;
+  const modeOptions = getContractModeOptions(localize)[tradeType];
 
   return (
-    <main
-      className={`flex flex-col max-lg:h-dvh max-lg:overflow-y-auto lg:overflow-visible ${
-        editMode ? 'bg-muted/50' : 'bg-background'
-      }`}
-    >
-      {editMode ? (
-        <div className="group/hdr sticky top-0 z-50">
-          {headerEl}
-          <div className="pointer-events-none absolute inset-0 z-[60] opacity-0 ring-2 ring-inset ring-muted-foreground/25 transition-opacity group-hover/hdr:opacity-100">
-            <span className="absolute left-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-sm ring-1 ring-border">
-              <Ban className="h-3.5 w-3.5" />
-              <Localize i18n_default_text="Not editable" />
-            </span>
-          </div>
-        </div>
-      ) : (
-        headerEl
-      )}
+    <div className="space-y-2 sm:space-y-4">
+      <ToggleGroup
+        type="single"
+        value={contractMode}
+        onValueChange={(value) => {
+          if (value) onContractModeChange(value as ContractMode);
+        }}
+        className="w-full gap-0 rounded-full bg-muted p-1"
+      >
+        {modeOptions.map((opt) => (
+          <ToggleGroupItem
+            key={opt.value}
+            value={opt.value}
+            className="flex-1 rounded-full text-sm font-medium text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-primary data-[state=on]:font-bold data-[state=on]:shadow-sm"
+          >
+            {opt.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
-      {appConfig ? (
-        isMobile ? (
-          /* No-code mobile layout: a single, reorderable column of blocks. */
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-            <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-3 py-3">
-              {isLoading ? <Skeleton className="h-[420px] w-full rounded-xl" /> : renderConfigurable()}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="stake" className="text-xs text-muted-foreground">
+            <Localize i18n_default_text="Stake" />
+          </Label>
+          <Input
+            id="stake"
+            type="number"
+            value={stake}
+            onChange={(e) => onStakeChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+            }}
+            min={0}
+            step="0.01"
+            labelRight="USD"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="duration" className="text-xs text-muted-foreground">
+            <Localize i18n_default_text="Duration" />
+          </Label>
+          <Input
+            id="duration"
+            type="number"
+            value={duration}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val)) onDurationChange(val);
+            }}
+            min={durationLimits.min}
+            max={durationLimits.max}
+            step={1}
+            labelRight={localize('Ticks')}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            <Localize i18n_default_text="Strategy" />
+          </span>
+          <span className="text-xs font-medium text-foreground">{effectiveStake.toFixed(2)} USD</span>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-[11px] text-muted-foreground">
+              <Localize i18n_default_text="Mode" />
+            </Label>
+            <div className="flex rounded-full bg-background p-1">
+              <button
+                type="button"
+                onClick={() => setStakeMode('standard')}
+                className={`flex-1 rounded-full px-2 py-1.5 text-xs font-medium ${
+                  stakeMode === 'standard' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                <Localize i18n_default_text="Martingale" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setStakeMode('stake-bare')}
+                className={`flex-1 rounded-full px-2 py-1.5 text-xs font-medium ${
+                  stakeMode === 'stake-bare' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                <Localize i18n_default_text="Stake Bare" />
+              </button>
             </div>
           </div>
-        ) : (
-          /* No-code desktop layout: two columns, like rise-fall and
-             accumulators — market data (symbol, tick, digit stats) left where
-             those templates put the chart, controls card right. See
-             MARKET_COLUMN_KEYS for the split. The controls column is 440px
-             (not the siblings' 400px) because the trade-type chips row lives
-             here and needs ~370px of card content in English — 400px would
-             clip it, and longer locales need the headroom.
 
-             The 440px track is guarded behind `lg:` because useIsMobile
-             initialises to false — on SSR and the first client render every
-             viewport takes this desktop branch, and an unguarded fixed track
-             would overflow a phone until hydration flips the flag. The hook's
-             (max-width: 1023px) query is the same boundary as `lg`, so the
-             CSS and the JS branch agree once hydrated.
+          <div className="space-y-1.5">
+            <Label className="text-[11px] text-muted-foreground">
+              <Localize i18n_default_text="Multiplier" />
+            </Label>
+            <select
+              value={stakeMode === 'stake-bare' ? stakeBareMultiplier : martingaleMultiplier}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (stakeMode === 'stake-bare') {
+                  setStakeBareMultiplier(value);
+                } else {
+                  setMartingaleMultiplier(value);
+                }
+              }}
+              className="w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            >
+              {[2, 3, 4, 5, 6, 7].map((multiplier) => (
+                <option key={multiplier} value={multiplier}>
+                  {multiplier}x
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-             Edit mode shares this layout (as in rise-fall/accumulators), so
-             the builder's desktop viewport shows what deploys: selection works
-             across both columns, and rearrange drags reorder within a column
-             (each column keys the same full config.order, so a within-column
-             drop still produces the correct full order; a cross-column drop is
-             a no-op because each instance tracks its own drag). Full reordering
-             lives in the builder's phone viewport, which renders the single
-             mobile column. */
-          <div className="flex w-full max-w-5xl mx-auto flex-col px-4 py-4 pb-24">
-            {isLoading ? (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_440px]">
-                <Skeleton className="h-[420px] w-full rounded-xl" />
-                <Skeleton className="h-[420px] w-full rounded-xl" />
-              </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="takeProfit" className="text-[11px] text-muted-foreground">
+              <Localize i18n_default_text="Take Profit" />
+            </Label>
+            <Input
+              id="takeProfit"
+              type="number"
+              value={takeProfit}
+              onChange={(e) => setTakeProfit(e.target.value)}
+              min={0}
+              step="0.01"
+              labelRight="USD"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="stopLoss" className="text-[11px] text-muted-foreground">
+              <Localize i18n_default_text="Stop Loss" />
+            </Label>
+            <Input
+              id="stopLoss"
+              type="number"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(e.target.value)}
+              min={0}
+              step="0.01"
+              labelRight="USD"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-background/50 px-2 py-1.5 text-[11px] text-muted-foreground">
+          <span>
+            <Localize i18n_default_text="Session P/L" />
+          </span>
+          <div className="flex items-center gap-2">
+            <span className={`font-semibold ${sessionPnl >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {sessionPnl >= 0 ? '+' : '-'}${Math.abs(sessionPnl).toFixed(2)}
+            </span>
+            <button
+              type="button"
+              onClick={resetSessionPnl}
+              className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground underline-offset-2 hover:underline"
+            >
+              <Localize i18n_default_text="Reset" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border p-2 sm:p-3 bg-muted/20 space-y-1.5 sm:space-y-2">
+        <p className="text-[11px] sm:text-xs text-muted-foreground mb-0 sm:mb-1">
+          <Localize i18n_default_text="Prediction" />
+        </p>
+        <p className="text-xs sm:text-sm font-medium">
+          <Localize i18n_default_text="Last digit of the price will" />{' '}
+          <span className="text-primary font-bold">
+            {getPredictionText(contractMode, localize)}
+          </span>
+          {showDigitInPrediction(contractMode) && (
+            <>
+              {' '}
+              <span className="inline-flex w-5 h-5 rounded-full bg-primary text-primary-foreground items-center justify-center text-xs font-bold">
+                {selectedDigit}
+              </span>
+            </>
+          )}
+        </p>
+        {(proposal || isProposalLoading) && (
+          <div className="flex items-center justify-between pt-1 border-t border-border">
+            <span className="text-xs text-muted-foreground">
+              <Localize i18n_default_text="Payout" />
+            </span>
+            {isProposalLoading ? (
+              <Skeleton className="h-4 w-24" />
             ) : (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_440px]">
-                <Card data-testid="market-column">
-                  <CardContent className="pt-4">
-                    {renderConfigurable(MARKET_COLUMN_KEYS, false)}
-                  </CardContent>
-                </Card>
-                <Card data-testid="controls-column">
-                  <CardContent className="pt-4">
-                    {renderConfigurable(CONTROLS_COLUMN_KEYS)}
-                  </CardContent>
-                </Card>
-              </div>
+              <span className="text-sm font-bold text-foreground">
+                {proposal!.payout.toFixed(2)} USD
+              </span>
             )}
           </div>
-        )
-      ) : isMobile ? (
-        /* Standard mobile layout (unchanged): trade type chips + main card. */
-        <div className="flex w-full max-w-7xl mx-auto flex-col px-3 py-2 sm:px-4 sm:py-4 gap-2 sm:gap-3 pb-10">
-          {isLoading ? (
-            <>
-              {/* Trade type chips skeleton */}
-              <div className="flex gap-2">
-                <Skeleton className="h-8 w-32 rounded-full" />
-                <Skeleton className="h-8 w-28 rounded-full" />
-                <Skeleton className="h-8 w-24 rounded-full" />
-              </div>
-              {/* Main card skeleton */}
-              <Skeleton className="w-full h-[420px] rounded-xl" />
-            </>
-          ) : (
-            <>
-              <TradeTypeChips
-                className="shrink-0"
-                value={tradeType}
-                options={digitTradeTypeOptions}
-                onValueChange={setTradeType}
-              />
+        )}
+      </div>
 
-              <Card className="shrink-0 border shadow-sm mb-12">
-                <CardContent className="flex flex-col p-3 pt-3 sm:p-6 sm:pt-4 pb-2 sm:pb-6">
-                  {/* Symbol selector + tick display */}
-                  <div className="flex flex-col pb-4 pt-1 sm:pb-6 sm:pt-2">
-                    <SymbolSelector
-                      symbols={symbols}
-                      activeSymbol={activeSymbol}
-                      onSymbolChange={selectSymbol}
-                    />
-                    <div className="flex items-center justify-center min-h-24 sm:min-h-32">
-                      <CurrentTickDisplay
-                        tick={currentTick}
-                        lastDigit={lastDigit}
-                        activeSymbol={activeSymbol}
-                        pipSize={pipSize}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t divide-y divide-border">
-                    {/* Digit stats — hidden for Even/Odd */}
-                    {tradeType !== 'even-odd' && (
-                      <div className="py-4 sm:py-6">
-                        <DigitStatsBar
-                          digitStats={digitStats}
-                          selectedDigit={selectedDigit}
-                          onDigitSelect={setSelectedDigit}
-                        />
-                      </div>
-                    )}
-
-                    {/* Trade controls */}
-                    <div className="pt-4 sm:pt-6">
-                      <TradeControls
-                        tradeType={tradeType}
-                        contractMode={contractMode}
-                        onContractModeChange={setContractMode}
-                        selectedDigit={selectedDigit}
-                        isConnected={isConnected}
-                        stake={stake}
-                        onStakeChange={setStake}
-                        duration={duration}
-                        onDurationChange={setDuration}
-                        durationLimits={durationLimits}
-                        proposal={proposal}
-                        isProposalLoading={isProposalLoading}
-                        onBuy={handleBuy}
-                        isBuying={isBuying}
-                        buyResult={buyResult}
-                        buyError={buyError}
-                        onClearBuyResult={clearBuyResult}
-                        isAuthenticated={authState === 'authenticated'}
-                        isMobile
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </div>
-      ) : (
-        /* Standard desktop layout: the SAME two-column split as the no-code
-           desktop above — market data (symbol, tick, digit stats) left,
-           controls (trade type chips + trade controls) right — so both paths
-           look identical. The `lg:` guard plays the same first-paint role as
-           in the no-code grid (useIsMobile initialises to false). */
-        <div className="flex w-full max-w-5xl mx-auto flex-col px-4 py-4 pb-24">
-          {isLoading ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_440px]">
-              <Skeleton className="h-[420px] w-full rounded-xl" />
-              <Skeleton className="h-[420px] w-full rounded-xl" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_440px]">
-              <Card data-testid="market-column">
-                <CardContent className="flex flex-col gap-4 pt-4">
-                  <SymbolSelector
-                    symbols={symbols}
-                    activeSymbol={activeSymbol}
-                    onSymbolChange={selectSymbol}
-                  />
-                  <div className="flex flex-1 items-center justify-center min-h-32">
-                    <CurrentTickDisplay
-                      tick={currentTick}
-                      lastDigit={lastDigit}
-                      activeSymbol={activeSymbol}
-                      pipSize={pipSize}
-                    />
-                  </div>
-                  {/* Digit stats — hidden for Even/Odd */}
-                  {tradeType !== 'even-odd' && (
-                    <DigitStatsBar
-                      digitStats={digitStats}
-                      selectedDigit={selectedDigit}
-                      onDigitSelect={setSelectedDigit}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-              <Card data-testid="controls-column">
-                <CardContent className="flex flex-col gap-4 pt-4">
-                  {/* Rendered inside the controls card, so the edge fade is
-                      drawn in the card colour rather than the page background. */}
-                  <TradeTypeChips
-                    backdrop="card"
-                    value={tradeType}
-                    options={digitTradeTypeOptions}
-                    onValueChange={setTradeType}
-                  />
-                  <TradeControls
-                    tradeType={tradeType}
-                    contractMode={contractMode}
-                    onContractModeChange={setContractMode}
-                    selectedDigit={selectedDigit}
-                    isConnected={isConnected}
-                    stake={stake}
-                    onStakeChange={setStake}
-                    duration={duration}
-                    onDurationChange={setDuration}
-                    durationLimits={durationLimits}
-                    proposal={proposal}
-                    isProposalLoading={isProposalLoading}
-                    onBuy={handleBuy}
-                    isBuying={isBuying}
-                    buyResult={buyResult}
-                    buyError={buyError}
-                    onClearBuyResult={clearBuyResult}
-                    isAuthenticated={authState === 'authenticated'}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </div>
-      )}
-
-      {pinBuy ? (
-        <PinnedBuyBar
-          editMode={editMode}
-          rearrangeMode={rearrangeMode}
-          selected={selectedKey === 'buy'}
-          onSelect={() => onSelect?.('buy')}
-          label={localize('Buy button')}
+      <div className={isMobile ? 'fixed bottom-[calc(env(safe-area-inset-bottom)+2.5rem)] left-3 right-3' : undefined}>
+        <Button
+          className="w-full h-10 rounded-full px-6 sm:h-11 sm:px-8"
+          disabled={!isConnected || !proposal || isBuying || riskBlocked}
+          onClick={onBuy}
         >
-          <ConfigurableBuyButton
-            variant={appConfig!.styles.buy}
-            isConnected={isConnected}
-            proposal={proposal}
-            onBuy={handleBuy}
-            isBuying={isBuying}
-          />
-        </PinnedBuyBar>
-      ) : inFlowFooter ? (
-        /* Unpinned mobile: the same band the pinned bar ends in, minus the Buy
-           button — in flow at the end of the h-dvh column, so the scroll area
-           ends where it begins and nothing reserves clearance for it. Sharing
-           the band is what keeps the footer from moving when the pin toggles. */
-        <FooterBar />
-      ) : (
-        /* Fixed footer — desktop and the standard layout, which scroll the
-           document rather than an inner column. */
-        <div className="fixed bottom-0 left-0 right-0 py-2 text-center bg-background/80 backdrop-blur-sm">
-          <Footer />
-        </div>
-      )}
+          {riskBlocked
+            ? localize('Risk guard active')
+            : isBuying
+              ? localize('Purchasing...')
+              : proposal
+                ? localize('Buy @ {{price}} USD', {
+                    price: proposal.askPrice.toFixed(2),
+                  })
+                : localize('Buy Contract')}
+        </Button>
+      </div>
 
-      <LoginPromptDialog
-        open={showLoginPrompt}
-        onOpenChange={setShowLoginPrompt}
-        onLogin={editMode ? noopAsyncAuth : onLogin}
-        onSignUp={editMode ? noopAsyncAuth : onSignUp}
-      />
-    </main>
+      {isAuthenticated && (
+        <Button asChild variant="ghost" className="w-full text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/reports">
+            <Localize i18n_default_text="View your positions →" />
+          </Link>
+        </Button>
+      )}
+    </div>
   );
 }
