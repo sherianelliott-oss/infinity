@@ -1,0 +1,44 @@
+services:
+  web:
+    # Runs the app FROM THE CLONED SOURCE in dev mode so edits hot-reload.
+    image: node:22
+    working_dir: /app
+    command:
+      - sh
+      - -ec
+      - npm install --no-audit --no-fund && exec npm run dev -- --hostname 0.0.0.0 --port 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    env_file:
+      # Public app config committed with the repo (Deriv app id, scopes, ...).
+      - ./.env.production
+      # Platform-managed secrets — LAST so dashboard values always win.
+      - /run/base44/app.env
+    environment:
+      - BASE44_PREVIEW_MODE
+      - BASE44_PUBLIC_HOST_SUFFIX
+      - NEXT_TELEMETRY_DISABLED=1
+      # Bind mounts need polling for file watching to fire.
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 300s
+    restart: on-failure
+    labels:
+      base44.project: my-trading-app
+      base44.kind: web
+      base44.port: "3000"
+
+volumes:
+  node_modules:
