@@ -6,7 +6,7 @@ const nextConfig = {
   transpilePackages: ['@deriv/core'],
   // Sandbox previews are served from https://3000-<suffix>. Next.js gates dev
   // assets and HMR by Origin, so that origin must be allowlisted explicitly.
-  // Unset BASE44_PREVIEW_MODE keeps the default (no allowlist) behaviour.
+  // Unset BASE44_PREVIEW_MODE (e.g. production, CI) keeps the default behaviour.
   ...(isSandboxPreview && previewHostSuffix
     ? { allowedDevOrigins: [`3000-${previewHostSuffix}`] }
     : {}),
